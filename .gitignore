@@ -11,6 +11,7 @@
 *.parquet
 
 # 인증 정보
+/auth/
 .env
 .env.*
 !.env.example
