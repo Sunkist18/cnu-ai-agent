@@ -19,8 +19,10 @@
 | Trajectory 수 | 100 |
 | Eval split | 80 train / 20 held-out |
 | 학습 GPU | NVIDIA B200, 183GB HBM3e (단일) |
-| 작업 환경 | 학교 컨테이너 (Clunix), `/NHNHOME/WORKSPACE` |
-| Repo | 별도 GitHub repo `cnu-ai-agent` (browser-use는 PyPI dep) |
+| 수집 머신 | 학교 **맥북** (macOS, 학내망에서 KORUS 접근) — Phase 0~2, 4 |
+| 학습 서버 | **B200 컨테이너** — Phase 3 만. 작업 디렉토리: `/NHNHOME/WORKSPACE/26moe002_H/<your-id>/` (학생 5명 공용 폴더 안 본인 폴더). lustre1 마운트 2TB. root는 작아 venv는 본인 폴더 안에. |
+| Phase 4 네트워크 | B200 학내망 진입 여부에 따라 결정. 진입 가능 → B200에서 vLLM serve + browser-use도 동일 머신에서. 미진입 → vLLM은 B200, 브라우저는 맥북, ChatOpenAILike(base_url=...)을 SSH tunnel/reverse proxy로 연결. 학습 끝난 후 결정. |
+| Repo | 별도 GitHub repo `Sunkist18/cnu-ai-agent` (browser-use는 PyPI dep) |
 
 ---
 
@@ -30,13 +32,13 @@ Anthropic Commercial Terms는 일반적으로 *"서비스 출력으로 경쟁 LL
 
 ---
 
-## Phase -1: Repo Bootstrap (지금 머신, 학교 이전 전)
+## Phase -1: Repo Bootstrap (지금 머신, 학교 이전 전) ✅ 완료
 
-KORUS는 학내망 IP에서만 접근 가능 → 데이터 수집·학습은 학교 컨테이너에서 진행. 지금 머신은 plan + skeleton만 만들어 GitHub에 올리고, 학교에서 clone 후 살을 붙인다.
+KORUS는 학내망 IP에서만 접근 가능 → 데이터 수집은 학교 맥북, 학습은 별도 B200 서버. 지금 머신(개인 PC)은 plan + skeleton만 만들어 GitHub에 올리고, 학교 환경에서 clone 후 살을 붙인다.
 
 순서:
 
-1. 별도 GitHub repo `cnu-ai-agent` 생성 (`gh repo create choiminwoo/cnu-ai-agent --private`). browser-use는 PyPI dep으로 받음 — fork 안 함.
+1. 별도 GitHub repo `Sunkist18/cnu-ai-agent` 생성 (private). browser-use는 PyPI dep으로 받음 — fork 안 함.
 2. 로컬에 디렉토리 만들고 (`C:\Users\mass_\Documents\sandbox\cnu-ai-agent`) skeleton 작성:
    ```
    cnu-ai-agent/
@@ -68,13 +70,29 @@ KORUS는 학내망 IP에서만 접근 가능 → 데이터 수집·학습은 학
    └── .gitignore              # trajectories/, ckpt/, screenshots/, *.png, *.jsonl
    ```
    stub들은 import만 하고 docstring으로 "학교 환경에서 PLAN.md §N 참고해 구현"이라고 표시. 학교 Claude Code가 PLAN.md 읽고 stub 채우는 게 task가 됨.
-3. 학교 머신에서 (단일 B200 컨테이너):
+3. 학교 환경 셋업 — 두 머신 분리:
+
+   **(a) 맥북 (Phase 0~2, 4)** — 수집·변환·평가 모두 여기서. KORUS 접근은 학내 wifi/VPN.
    ```bash
-   cd /NHNHOME/WORKSPACE
-   git clone https://github.com/choiminwoo/cnu-ai-agent.git
+   git clone https://github.com/Sunkist18/cnu-ai-agent.git
    cd cnu-ai-agent
-   uv sync  # 또는 pip install -e .
+   uv venv --python 3.11
+   uv sync --extra dev
    # Claude Code 실행 후 "PLAN.md 읽고 Phase 0a부터 진행해줘"
+   ```
+
+   **(b) B200 학습 서버 (Phase 3 만)** — LoRA SFT 1회 돌리는 게 전부.
+   ```bash
+   cd /NHNHOME/WORKSPACE/26moe002_H/<your-id>   # 본인 학생 폴더 (예: mwchoi)
+   git clone https://github.com/Sunkist18/cnu-ai-agent.git
+   cd cnu-ai-agent
+   uv venv --python 3.11   # root 작으니 venv는 본인 폴더 안 (.venv)
+   uv sync --extra training --extra serve
+   # 학습 데이터는 맥북에서 rsync로 옮겨오기:
+   #   (맥북에서) rsync -av data/ <user>@<b200>:/NHNHOME/WORKSPACE/26moe002_H/<your-id>/cnu-ai-agent/data/
+   python -m cnu_agent.training.qlora_sft \
+       --train data/korus_train.jsonl --eval data/korus_eval.jsonl \
+       --out ckpt/qwen25vl-korus-lora
    ```
 
 **ToS 재확인**: 학교 환경에서 Claude Code 시작하기 전, 위 ⚠️ 섹션 한 번 더 확인하고 진행. ToS 위배가 우려되면 plan의 ChatClaudeCode 부분만 ChatAnthropic + Batch API 또는 다른 provider로 바꾸면 나머지는 그대로 유효.
@@ -329,7 +347,7 @@ trainer.train()
 
 100 trajectory × ~10 step = ~800 train sample이라 **3 epoch도 5~15분 안에 끝**. 핵심은 학습 시간이 아니라 데이터 품질.
 
-**컨테이너 환경 메모**: 작업 공간이 `/NHNHOME/WORKSPACE`. checkpoint도 거기 두자 (`/NHNHOME/WORKSPACE/ckpt/...`). pip 대신 uv 그대로 사용 가능하면 사용, 안 되면 컨테이너 안에서 `pip install -e .`로 fallback.
+**컨테이너 환경 메모**: 학생 폴더는 `/NHNHOME/WORKSPACE/26moe002_H/<your-id>/` (lustre1 마운트, 2TB). repo도 ckpt도 모두 그 안. root volume은 작으니 venv·model cache는 절대 root에 두지 말 것. uv가 컨테이너에 없으면 `pip install -e ".[training]"`로 fallback. HuggingFace cache는 `HF_HOME=/NHNHOME/WORKSPACE/26moe002_H/<your-id>/.cache/huggingface` 등으로 본인 폴더 안에 redirect.
 
 ### 7. `cnu_agent/student/serve_and_run.py` — vLLM serve + browser-use 통합
 

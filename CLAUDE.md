@@ -1,6 +1,13 @@
 # CLAUDE.md
 
-학교 컨테이너 환경 (단일 B200, Clunix, `/NHNHOME/WORKSPACE`)에서 작업 중인 Claude Code를 위한 onboarding.
+학교 환경에서 작업 중인 Claude Code를 위한 onboarding. 작업이 두 머신에 걸쳐 있다 — 어느 머신에서 도는지 먼저 확인하고 진행할 것.
+
+| 머신 | 담당 Phase | 위치 |
+|------|------|------|
+| **맥북** (macOS, 학내망에서 KORUS 접근) | 0~2, 4 (수집·변환·평가) | 임의 |
+| **B200 학습 서버** (단일 GPU 183GB) | 3 (LoRA SFT) | `/NHNHOME/WORKSPACE/26moe002_H/<your-id>/` |
+
+Claude Code는 보통 맥북에서 띄우고, B200은 ssh로 들어가 학습 명령 한 번 돌리는 식이면 됨. 두 머신에 동시에 띄울 필요 없음.
 
 ## 시작하기 전에 반드시 읽기
 
@@ -30,11 +37,14 @@ uv run pytest -vxs tests/
 
 ## 데이터·체크포인트 위치
 
-- Trajectory: `/NHNHOME/WORKSPACE/cnu-ai-agent/trajectories/<task_id>/`
-- 학습 데이터: `/NHNHOME/WORKSPACE/cnu-ai-agent/data/`
-- 모델 체크포인트: `/NHNHOME/WORKSPACE/cnu-ai-agent/ckpt/`
+각 머신의 repo clone 위치 안에:
+- Trajectory (맥북): `cnu-ai-agent/trajectories/<task_id>/`
+- 학습 데이터 (맥북에서 변환 → B200으로 rsync): `cnu-ai-agent/data/`
+- 모델 체크포인트 (B200): `cnu-ai-agent/ckpt/`
 
-`.gitignore`에 위 경로 다 들어있음 — 절대 commit 금지 (스크린샷에 민감정보 포함 가능).
+B200에서는 `/NHNHOME/WORKSPACE/26moe002_H/<your-id>/cnu-ai-agent/` 안에 자리 잡으니, ckpt 절대 경로는 예: `/NHNHOME/WORKSPACE/26moe002_H/mwchoi/cnu-ai-agent/ckpt/qwen25vl-korus-lora/`.
+
+`.gitignore`에 위 경로 다 들어있음 — 절대 commit 금지 (스크린샷·문서 내용에 민감정보 포함 가능).
 
 ## browser-use 본체 코드 위치
 
