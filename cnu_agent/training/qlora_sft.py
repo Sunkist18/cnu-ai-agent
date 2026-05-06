@@ -162,9 +162,26 @@ def make_collator(processor, data_root: Path, text_only: bool, max_length: int):
 	return collate
 
 
-def _load_model_and_processor(base_model: str, quantize: bool, no_flash_attn: bool):
-	"""Load Qwen2.5-VL — try the new 2.5-VL class first, fall back to 2-VL if older transformers."""
+def _load_model_and_processor(
+	base_model: str,
+	quantize: bool,
+	no_flash_attn: bool,
+	max_image_tokens: int = 512,
+	min_image_tokens: int = 64,
+):
+	"""Load Qwen2.5-VL — try the new 2.5-VL class first, fall back to 2-VL if older transformers.
+
+	`max_image_tokens` caps the per-image visual token count via the processor's
+	`max_pixels` attribute (each token covers a 28x28 patch → max_pixels = N * 28 * 28).
+	KORUS screenshots are 2560x1271 ≈ 4095 tokens at native res, which blows the
+	context budget. Capping at 512 tokens keeps the budget reasonable.
+	"""
 	processor = AutoProcessor.from_pretrained(base_model, trust_remote_code=True)
+	# Cap image resolution at the processor level so chat-template expansion stays bounded.
+	if hasattr(processor, "image_processor"):
+		ip = processor.image_processor
+		ip.max_pixels = max_image_tokens * 28 * 28
+		ip.min_pixels = min_image_tokens * 28 * 28
 
 	model_kwargs: dict[str, Any] = {
 		"torch_dtype": torch.bfloat16,
@@ -225,6 +242,13 @@ def main(argv: list[str] | None = None) -> int:
 		help="이미지 무시하고 텍스트만 학습 — 파이프라인 빠른 검증용",
 	)
 	parser.add_argument("--no-flash-attn", action="store_true")
+	parser.add_argument(
+		"--max-image-tokens",
+		type=int,
+		default=512,
+		help="이미지당 최대 visual token 수 (28x28 patch 단위). KORUS screenshot은 native ~4000 token이라 cap 필수.",
+	)
+	parser.add_argument("--min-image-tokens", type=int, default=64)
 
 	# Smoke test helpers
 	parser.add_argument("--max-train-samples", type=int, default=None)
@@ -256,6 +280,8 @@ def main(argv: list[str] | None = None) -> int:
 		base_model=args.base_model,
 		quantize=args.quantize,
 		no_flash_attn=args.no_flash_attn,
+		max_image_tokens=args.max_image_tokens,
+		min_image_tokens=args.min_image_tokens,
 	)
 	if args.quantize:
 		model = prepare_model_for_kbit_training(model)
