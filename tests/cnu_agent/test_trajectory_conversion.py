@@ -46,10 +46,10 @@ def test_extract_text_none() -> None:
 
 
 def test_step_to_sample_minimal_synthetic(tmp_path: Path) -> None:
-	"""합성 step JSON으로 변환이 정상 모양 만들어내는지."""
-	traj = tmp_path / "task_xx"
+	"""합성 step JSON으로 변환이 정상 모양 + repo-relative 이미지 경로."""
+	repo_root = tmp_path
+	traj = tmp_path / "trajectories" / "task_xx"
 	(traj / "screenshots").mkdir(parents=True)
-	# 가짜 PNG 1바이트 — 실제 디코드 안 하니 OK
 	(traj / "screenshots" / "step_3.png").write_bytes(b"\x89PNG")
 
 	step = {
@@ -71,21 +71,21 @@ def test_step_to_sample_minimal_synthetic(tmp_path: Path) -> None:
 		"model_output": {"thinking": "...", "action": [{"click": {"index": 5}}]},
 	}
 
-	sample = step_to_sample(step, traj)
+	sample = step_to_sample(step, traj, repo_root=repo_root)
 	assert sample is not None
 	assert sample["task_id"] == "task_xx"
 	assert sample["step"] == 3
 	msgs = sample["messages"]
 	assert [m["role"] for m in msgs] == ["system", "user", "assistant"]
 	assert msgs[0]["content"] == "SYS PROMPT"
-	# user content는 list — image + text
 	assert isinstance(msgs[1]["content"], list)
 	types = [p["type"] for p in msgs[1]["content"]]
 	assert "image" in types and "text" in types
-	# 이미지 path가 절대경로 + file:// scheme
+	# 이미지 path는 repo-relative — 절대경로/file:// scheme 아님
 	img = next(p for p in msgs[1]["content"] if p["type"] == "image")
-	assert img["image"].startswith("file://")
-	assert "step_3.png" in img["image"]
+	assert not img["image"].startswith("file://")
+	assert not img["image"].startswith("/")
+	assert img["image"] == "trajectories/task_xx/screenshots/step_3.png"
 	# assistant content는 valid JSON
 	parsed = json.loads(msgs[2]["content"])
 	assert parsed == step["model_output"]

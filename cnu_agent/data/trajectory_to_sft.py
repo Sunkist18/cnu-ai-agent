@@ -68,22 +68,40 @@ def _extract_text(content: Any) -> str:
 	return ""
 
 
-def _resolve_screenshot(traj_dir: Path, rel: str | None) -> str | None:
-	"""screenshot_path (relative) → absolute file:// URL, or None if missing/invalid."""
+def _resolve_screenshot(traj_dir: Path, rel: str | None, repo_root: Path) -> str | None:
+	"""screenshot_path (trajectory-relative) → repo-relative path, or None if missing.
+
+	Output is a portable relative path like `trajectories/<id>/screenshots/step_N.png`
+	that the training code can resolve against any data_root.
+	"""
 	if not rel:
 		return None
 	full = (traj_dir / rel).resolve()
 	if not full.exists():
 		return None
-	return f"file://{full}"
+	try:
+		return str(full.relative_to(repo_root))
+	except ValueError:
+		# trajectory outside repo root — fall back to absolute (portability lost)
+		return str(full)
 
 
-def step_to_sample(step: dict[str, Any], traj_dir: Path) -> dict[str, Any] | None:
+def step_to_sample(
+	step: dict[str, Any],
+	traj_dir: Path,
+	repo_root: Path | None = None,
+) -> dict[str, Any] | None:
 	"""Convert one step from steps.jsonl into one ChatML training sample.
+
+	Image path in the output is repo-relative (e.g. `trajectories/<id>/screenshots/
+	step_N.png`) so the JSONL is portable across machines. Training code resolves
+	it against a `--data-root` (defaults to the repo root).
 
 	Returns None when the step is too incomplete to be useful (missing system
 	prompt, no user turn, or empty model_output).
 	"""
+	if repo_root is None:
+		repo_root = REPO_ROOT
 	msgs = step.get("input_messages") or []
 	if not isinstance(msgs, list) or not msgs:
 		return None
@@ -110,7 +128,7 @@ def step_to_sample(step: dict[str, Any], traj_dir: Path) -> dict[str, Any] | Non
 		return None
 
 	# 3. screenshot — top-level field is authoritative (path on disk).
-	screenshot_url = _resolve_screenshot(traj_dir, step.get("screenshot_path"))
+	screenshot_url = _resolve_screenshot(traj_dir, step.get("screenshot_path"), repo_root)
 
 	# 4. assistant target — model_output as canonical JSON
 	model_output = step.get("model_output")
@@ -224,6 +242,9 @@ def run_conversion(
 	n_steps_skipped = 0
 	n_traj_skipped_failed = 0
 
+	# 이미지 경로는 in_root의 부모(=repo root)에 상대적으로 표기 — train/eval JSONL의
+	# 휴대성 확보 (다른 머신에서도 같은 repo layout이면 그대로 읽힘).
+	repo_root = in_root.resolve().parent
 	for tid, tdir, steps in walk_trajectories(in_root):
 		if success_only and not _is_trajectory_successful(tdir):
 			n_traj_skipped_failed += 1
@@ -231,7 +252,7 @@ def run_conversion(
 		samples: list[dict] = []
 		for step in steps:
 			n_steps_seen += 1
-			s = step_to_sample(step, tdir)
+			s = step_to_sample(step, tdir, repo_root=repo_root)
 			if s is None:
 				n_steps_skipped += 1
 				continue
