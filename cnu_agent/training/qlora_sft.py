@@ -42,13 +42,30 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _load_jsonl(path: Path) -> list[dict]:
+	"""Load JSONL → list of {messages_json, task_id, step}.
+
+	Why messages_json (string) instead of the raw `messages` list:
+	HF Datasets builds an Arrow table whose schema is inferred from the first
+	row, but our `content` field switches between str (system) and list[dict]
+	(user multimodal). Arrow refuses to mix list and non-list values inside
+	one column, so we serialize the whole `messages` list as a JSON string —
+	the collator parses it back at batch time.
+	"""
 	if not path.exists():
 		raise FileNotFoundError(f"{path} not found")
-	out = []
+	out: list[dict] = []
 	for line in path.read_text(encoding="utf-8").splitlines():
 		line = line.strip()
-		if line:
-			out.append(json.loads(line))
+		if not line:
+			continue
+		sample = json.loads(line)
+		out.append(
+			{
+				"messages_json": json.dumps(sample.get("messages", []), ensure_ascii=False),
+				"task_id": sample.get("task_id", ""),
+				"step": sample.get("step", -1),
+			}
+		)
 	return out
 
 
@@ -103,7 +120,9 @@ def make_collator(processor, data_root: Path, text_only: bool, max_length: int):
 		texts: list[str] = []
 		images_per: list[list[Image.Image]] = []
 		for ex in examples:
-			msgs = ex["messages"]
+			# messages는 JSON 문자열로 들어옴 (Arrow type 충돌 회피용)
+			raw = ex.get("messages_json")
+			msgs = json.loads(raw) if isinstance(raw, str) else ex.get("messages", [])
 			if text_only:
 				msgs = _strip_image_parts(msgs)
 				imgs: list[Image.Image] = []
