@@ -13,6 +13,10 @@
 # v0_failure_modes.md 같이 정제된 보고서는 commit OK (개별 add)
 /analysis/_*.json
 
+# 영상 (대용량 binary, demo용 — 로컬 유지)
+/videos/
+/trajectories_demo/
+
 # 인증 정보
 /auth/
 .env

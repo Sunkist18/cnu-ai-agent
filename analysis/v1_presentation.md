@@ -120,10 +120,20 @@ avg train_loss: **1.143**. eval 0.9061은 token-level — seed-level disjoint �
 
 ---
 
-## 9. 데모 영상
+## 9. 데모 영상 — F1+F2 적용 후 신규 수집 (2026-05-12 08:00 KST)
 
-- `videos/v1_demo/` — Agent가 KORUS read-only로 메뉴 navigate하는 시각 자료
-- 4 task: view_in_progress, approve_pending (조회), circulate_pending, config_personal_settings
+| task | success | steps | mp4 |
+|---|---|---|---|
+| approve_pending_01 — "받은 결재 문서 확인" | ✅ | 3 (v0는 19 step) | videos/v1_demo/approve_pending_01.mp4 |
+| circulate_pending_03 — "공람대기 {{doc_no}} 확인" | ✅ | 6 | videos/v1_demo/circulate_pending_03.mp4 |
+| view_in_progress_00 — "진행 문서 보여줘" | ✅ | 8 | videos/v1_demo/view_in_progress_00.mp4 |
+| config_personal_settings_00 — "개인환경 설정" (신규 카테고리) | ✅ | 8 | videos/v1_demo/config_personal_settings_00.mp4 |
+| **합계** | **4 / 4 (100%)** | avg 6.25 | videos/v1_demo/ALL.mp4 (40초 합본) |
+
+→ **F1 prompt 효과 즉시 확인**. 동일 `approve_pending_01` task가 v0 19 step → v1 3 step.
+→ 환경설정 카테고리는 v0에서 미수집 (read-only safety subset 제외) — F1 prompt + 24-seed 갱신 후 첫 시도에 success.
+
+각 mp4는 step별 next_goal을 SRT 자막으로 동봉 (드래그하면 자막 표시).
 
 ---
 
