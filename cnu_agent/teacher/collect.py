@@ -317,6 +317,7 @@ async def _collect_one(
 	auth_path: Path,
 	max_steps: int,
 	korus_url: str,
+	record_video_dir: Path | None = None,
 ) -> CollectResult:
 	task_id = task["id"]
 	out_dir = out_root / task_id
@@ -330,7 +331,7 @@ async def _collect_one(
 	agent_ref: dict[str, Any] = {}
 	step_cb = _step_callback_factory(task_id, out_dir, hits_box, agent_ref)
 
-	browser = Browser(
+	browser_kwargs: dict[str, Any] = dict(
 		# headless=True에서 KORUS 메뉴 렌더 이상 (smoke test에서 완료문서 못 찾음).
 		# discover.py는 headless=False에서 정상 동작 — 같은 모드로 통일.
 		headless=False,
@@ -339,6 +340,13 @@ async def _collect_one(
 		# KORUS 도메인 잠금 — sensitive_data 안전성 + 외부 사이트 우회 차단
 		allowed_domains=["*.korus.ac.kr", "*.cnu.ac.kr"],
 	)
+	if record_video_dir is not None:
+		video_dir = record_video_dir / task_id
+		video_dir.mkdir(parents=True, exist_ok=True)
+		browser_kwargs["record_video_dir"] = str(video_dir)
+		browser_kwargs["record_video_size"] = {"width": 1400, "height": 900}
+		print(f"  [{task_id}] 영상 녹화 → {video_dir}")
+	browser = Browser(**browser_kwargs)
 	llm = ChatClaudeCode()
 
 	sensitive = _build_sensitive_data_stub(task, korus_url)
@@ -423,6 +431,7 @@ async def run_collect(
 	ids: set[str] | None,
 	limit: int | None,
 	korus_url: str,
+	record_video_dir: Path | None = None,
 ) -> int:
 	if not auth_path.exists():
 		print(f"[FAIL] storage_state 없음: {auth_path}", file=sys.stderr)
@@ -440,7 +449,9 @@ async def run_collect(
 	for i, task in enumerate(selected):
 		print(f"\n[{i + 1}/{len(selected)}] {task['id']} — {task['task'][:80]}", flush=True)
 		try:
-			result = await _collect_one(task, out_root, auth_path, max_steps, korus_url)
+			result = await _collect_one(
+				task, out_root, auth_path, max_steps, korus_url, record_video_dir=record_video_dir
+			)
 		except Exception as e:  # noqa: BLE001
 			print(f"  ❌ unexpected exception: {e}", file=sys.stderr)
 			traceback.print_exc()
@@ -501,6 +512,12 @@ def main(argv: list[str] | None = None) -> int:
 	parser.add_argument("--ids-file", type=Path, default=None, help="task id 리스트 (.txt, 한 줄당 1 id)")
 	parser.add_argument("--limit", type=int, default=None, help="처음 N개만 (smoke test용)")
 	parser.add_argument("--url", type=str, default=None)
+	parser.add_argument(
+		"--record-video",
+		type=Path,
+		default=None,
+		help="활성 시 task별 mp4 녹화 → <dir>/<task_id>/video-XXXX.webm",
+	)
 	args = parser.parse_args(argv)
 
 	categories: list[str] | None = None
@@ -527,6 +544,7 @@ def main(argv: list[str] | None = None) -> int:
 			ids=ids,
 			limit=args.limit,
 			korus_url=url,
+			record_video_dir=args.record_video,
 		)
 	)
 
