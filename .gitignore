@@ -9,6 +9,9 @@
 *.png
 *.jsonl
 *.parquet
+# analysis/ raw 덤프 (done.text·input_messages에 동료 이름·문서번호 등 PII 포함 가능)
+# v0_failure_modes.md 같이 정제된 보고서는 commit OK (개별 add)
+/analysis/_*.json
 
 # 인증 정보
 /auth/
