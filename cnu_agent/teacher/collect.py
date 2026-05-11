@@ -351,7 +351,17 @@ async def _collect_one(
 		full_task = (
 			f"KORUS({korus_url})에서 다음 작업을 수행하세요. **read-only 모드**: "
 			f"메뉴 클릭·페이지 이동·조회까지만, 절대 제출/저장/승인/반려/상신 버튼 누르지 않습니다.\n\n"
-			f"task: {task['task']}"
+			f"task: {task['task']}\n\n"
+			# F1 — read-only 조회 task의 success 기준 명시 (v0 분석에서 페이지 도달 + 빈 결과 정확히\n"
+			# 인식했는데도 self-eval에서 fail로 표시한 케이스가 3건 있었음 — analysis/v0_failure_modes.md §3.3)
+			"## Done 평가 규칙\n"
+			"- 의도한 페이지에 도달해서 결과를 *확인*했다면 결과 데이터 유무와 무관하게 `done(success=True)`.\n"
+			"  예: 급여명세서 페이지 도달 + 검색 + '조회 결과 없음' 확인 → success=True (조회 자체는 성공).\n"
+			"- read-only 조회 task의 본질은 조회 동작 완료지, 데이터 존재 여부가 아님.\n"
+			"- `done(success=False)`는 다음 케이스에만:\n"
+			"  (a) 의도한 페이지/메뉴 자체를 못 찾음\n"
+			"  (b) search form 등 입력 UI가 동작 안 함\n"
+			"  (c) max_steps 도달했는데 결과 페이지에도 못 들어감"
 		)
 		agent = Agent(
 			task=full_task,
