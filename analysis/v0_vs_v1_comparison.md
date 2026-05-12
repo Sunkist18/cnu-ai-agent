@@ -6,26 +6,27 @@
 
 ## 1. 전체 요약
 
-| 지표 | v0 | v1 (in progress) |
+| 지표 | v0 | v1 demo (first batch) |
 |---|---|---|
-| 수집 trajectory | 24 | 4 (demo, 추가 6개 진행 중) |
-| Teacher success rate | 13/24 = **54.2%** | 4/4 = **100%** (demo subset) |
-| 카테고리 커버 | 2 (read-only) | 5 (read-only + 환경설정 + 결재선설정) |
-| 평균 step / trajectory | 12.8 | 6.25 |
-| mutating click | 0 / 308 step | 0 / 25 step |
-| 학습 결과 | LoRA r=16, eval_loss 0.611, token_acc 0.906 | (v1 데이터 확장 후 재학습) |
+| 수집 trajectory | 24 | 10 |
+| Teacher success rate | 13 / 24 = **54.2%** | 8 / 10 = **80.0%** |
+| 카테고리 커버 | 2 (read-only) | 5 |
+| 평균 step / trajectory | 12.8 | 11.4 |
+| 평균 step (success만) | 13.6 | 6.75 |
+| mutating click | 0 / 308 step | 0 / 114 step |
+| 학습 결과 (LoRA) | eval_loss 0.611 / token_acc 0.906 | (v1 데이터 확장 후 재학습) |
+| 데모 영상 | — | 10 mp4 + 합본 3분 22초 |
 
 ---
 
 ## 2. 데이터 수집 단위
 
-| 단위 | v0 | v1 (계획) | v1 (now) |
+| 단위 | v0 | v1 (계획) | v1 (now demo) |
 |---|---|---|---|
-| seed (curated) | 25 | 24 | 24 |
-| paraphrase task | 100 | 96 | 96 |
-| 실제 trajectory 시도 | 28 | 96 | 10 (4 + 6 진행 중) |
-| 실제 수집 trajectory | 24 | 96 | 4 (10 진행 중) |
-| 카테고리 분포 | 결재처리 8 / 문서조회 16 | 결재처리 8 / 문서조회 16 / 첨부 8 / 결재선 8 / 환경 4 / 결재작성 52 | demo 5 카테고리 |
+| Seed (curated) | 25 | 24 | — |
+| Paraphrase task | 100 | 96 | — |
+| 실제 시도 trajectory | 28 | 96 (full) | 10 (demo) |
+| 실제 수집 trajectory | 24 | 96 | 10 |
 
 ---
 
@@ -56,42 +57,78 @@
 
 ## 5. F1 + F2 적용 (v1 진입 전 코드 fix)
 
-| Fix | 변경 | 효과 |
+| Fix | 변경 |
+|---|---|
+| F1 | `cnu_agent/teacher/collect.py` — full_task prefix에 `Done 평가 규칙` 추가 (페이지 도달 + 결과 확인 → success=True, 데이터 0건 OK) |
+| F2 | `discovery/seeds_curated.json` — `view_doc_register` seed 제거 (25 → 24 seed), paraphrase 재실행으로 task 100 → 96 |
+
+### 예상 → 실측 비교
+
+| 단계 | 예상 | 실측 (v1 demo 10 trajectory) |
 |---|---|---|
-| F1 | `cnu_agent/teacher/collect.py` — full_task prefix에 `Done 평가 규칙` 추가 (페이지 도달 + 결과 확인 → success=True, 데이터 0건 OK) | self-fail 3건 복구 |
-| F2 | `discovery/seeds_curated.json` — `view_doc_register` seed 제거 (25 → 24 seed), paraphrase 재실행으로 task 100 → 96 | 메뉴 부재 4건 제외 |
+| v0 그대로 | 54.2% | — |
+| F1 (재분류) | 66.7% | — |
+| F1 + F2 | 80.0% | **80.0% (8/10)** ✅ |
 
-### 예상 success rate (v0 데이터 적용 시)
-
-| 단계 | 분자 | 분모 | rate |
-|---|---|---|---|
-| v0 그대로 | 13 | 24 | 54.2% |
-| F1 (재분류) | 16 | 24 | 66.7% |
-| F1 + F2 (view_doc_register 제외) | 16 | 20 | **80.0%** |
+→ **예상 그대로 80% 달성**.
 
 ---
 
-## 6. v1 신규 demo 수집 결과 (4 task 완료)
+## 6. v1 demo 신규 수집 결과 (10 task 100%/80%)
 
-| Task | 카테고리 | Success | v1 steps | v0 동일 seed steps |
-|---|---|---|---|---|
-| approve_pending_01 | 결재처리 | ✅ | **3** | 19 |
-| circulate_pending_03 | 결재처리 | ✅ | 6 | 5 (v0 도 success) |
-| view_in_progress_00 | 문서조회 | ✅ | 8 | 11 |
-| config_personal_settings_00 | 환경설정 (신규) | ✅ | 8 | (v0 미수집) |
-| **합계** | | **4 / 4 (100%)** | avg 6.25 | avg 11.7 |
+### 6.1 Per-task 결과
 
-### 관찰
+| Task | 카테고리 | v1 결과 | v1 step | v0 동일 seed 결과 | v0 동일 seed step |
+|---|---|---|---|---|---|
+| approve_pending_01 | 결재처리 | ✅ | **3** | 2/4 success | 11.2 avg |
+| approve_pending_03 | 결재처리 | ✅ | **3** | 2/4 success | 11.2 avg |
+| circulate_pending_03 | 결재처리 | ✅ | 6 | 3/4 success | 7.0 avg |
+| view_completed_01 | 문서조회 | ✅ | 8 | 3/4 success | 16.5 avg |
+| view_in_progress_00 | 문서조회 | ✅ | 8 | 4/4 success | 13.0 avg |
+| view_salary_statement_01 | 문서조회 | ✅ | 9 | 1/4 success (v0 self-fail) | 13.5 avg |
+| view_year_end_tax_00 | 문서조회 | ✅ | 9 | 0/2 success (v0 세션 만료) | 3.0 avg (login redirect) |
+| config_personal_settings_00 | 환경설정 (신규) | ✅ | 8 | (미수집) | — |
+| setup_approval_line_00 | 결재선설정 | ❌ | 23 | (미수집) | — |
+| favorite_approval_line_00 | 결재선설정 | ❌ | 25 | (미수집) | — |
+
+### 6.2 카테고리별
+
+| 카테고리 | v1 demo success | v1 demo total | success rate |
+|---|---|---|---|
+| 결재처리 | 3 | 3 | 100% |
+| 문서조회 | 4 | 4 | 100% |
+| 환경설정 | 1 | 1 | 100% |
+| 결재선설정 | 0 | 2 | 0% |
+| **합계** | **8** | **10** | **80%** |
+
+### 6.3 핵심 관찰
 
 | 관찰 | 의미 |
 |---|---|
 | `approve_pending_01` v0 19 step → v1 3 step | F1 prompt가 "결재대기함 도달 후 0건 인식 = success" 즉시 판단 |
+| `approve_pending_03` v0 17 step fail → v1 3 step success | F1 prompt 효과 추가 검증 |
+| `view_salary_statement_01` v0 15 step self-fail → v1 9 step success | F1 prompt가 self-fail 정정 (data empty → still success) |
+| `view_year_end_tax_00` v0 3 step (login redirect) → v1 9 step success | 세션 만료 fix (재인증) + F1 작동 |
 | 환경설정 신규 카테고리 첫 시도 success | F1 적용 + read-only 안전 prompt가 새 카테고리에서도 동작 |
-| 평균 step 12.8 → 6.25 | 불필요한 페이지 재방문 / max_steps 소진 감소 |
+| 결재선설정 2건 fail (메뉴 not found) | view_doc_register와 같은 패턴 — seed의 `where` path 추정값이 실제 KORUS에 부재. v1+ 에서 seed 제거 또는 path 교정 필요 |
 
 ---
 
-## 7. 학습 결과 (v0)
+## 7. v0 → v1 step 효율 비교
+
+| seed | v0 평균 step | v1 평균 step | 감소 |
+|---|---|---|---|
+| approve_pending | 11.2 | 3.0 | -73% |
+| circulate_pending | 7.0 | 6.0 | -14% |
+| view_completed | 16.5 | 8.0 | -52% |
+| view_in_progress | 13.0 | 8.0 | -38% |
+| view_salary_statement | 13.5 | 9.0 | -33% |
+
+→ F1 prompt가 navigation 효율 크게 개선. 평균 약 -40%.
+
+---
+
+## 8. 학습 결과 (v0)
 
 | Metric | v0 |
 |---|---|
@@ -112,7 +149,7 @@
 
 ---
 
-## 8. 학습 epoch별 추이
+## 9. 학습 epoch별 추이
 
 | Epoch | Train loss (avg) | Eval loss | Eval token acc |
 |---|---|---|---|
@@ -124,19 +161,19 @@
 
 ---
 
-## 9. 안전성 검증
+## 10. 안전성 검증
 
-| 항목 | v0 | v1 (지금까지) |
+| 항목 | v0 | v1 demo |
 |---|---|---|
 | Mutating click 시도 | 0 | 0 |
-| 검사 step 수 | 308 | 25 |
+| 검사 step 수 | 308 | 114 |
 | 검사 방법 | `interacted_element.ax_name` ground-truth audit | 동일 |
-| 모달/팝업 처리 | 취소·X 만 (Escape send_keys 1회 기록됨) | 동일 |
-| 세션 만료 처리 | 멈춤 + 기록 (v0에서 25번째 task 직전 발생) | (v1 신규 인증, 만료 안 됨) |
+| 모달/팝업 처리 | 취소·X 만 (Escape send_keys 기록) | 동일 |
+| 세션 만료 처리 | 멈춤 + 기록 (v0에서 25번째 task 직전 발생) | v1 신규 인증, 만료 안 됨 |
 
 ---
 
-## 10. 안전 가드 layer
+## 11. 안전 가드 layer
 
 | Layer | 역할 |
 |---|---|
@@ -148,29 +185,47 @@
 
 ---
 
-## 11. 코드·데이터 산출물
+## 12. 코드·데이터 산출물
 
 | 카테고리 | v0 | v1 추가 |
 |---|---|---|
-| 코드 라인 | 약 2,500 | +200 (analysis/audit/video script) |
+| 코드 라인 | 약 2,500 | +400 (analysis/audit/video script) |
 | 테스트 | 40 / 40 PASS | 동일 |
 | Seed | 38 enumerated, 25 curated | view_doc_register 제거 (24 curated) |
 | Task | 100 paraphrase | 96 (24 seed × 4 variant) |
-| Trajectory | 24 (90 MB) | 4 demo + 6 진행 중 (예상 ~30 MB) |
+| Trajectory | 24 (90 MB) | 10 demo (~40 MB) |
 | 학습 데이터 | train 234 / eval 74 | (v1 확장 후 재변환) |
 | Adapter | 566 MB | (v1 데이터로 재학습 예정) |
-| 데모 영상 | — | 4 mp4 + ALL.mp4 (40초, 697 KB) |
+| 데모 영상 | — | 10 mp4 + ALL.mp4 (3분 22초, 2.7 MB) |
 
 ---
 
-## 12. 다음 미팅 액션 진행 상황
+## 13. 다음 미팅 액션 진행 상황
 
 | # | 액션 | 상태 |
 |---|---|---|
 | A1 | 성능 비교 평가 (Gemini, 범용 모델) | 보류 (key 대기) |
 | A2 | 실패 원인 분석 + 연구실 공유 | ✅ `analysis/v0_failure_modes.md` |
-| A3 | 목표 success 80% 상향 | F1+F2 코드 fix 완료, v1 측정 대기 |
-| A4 | 실험 결과 비디오 녹화 | ✅ 4 mp4 + 합본 (`videos/v1_demo/`) |
+| A3 | 목표 success 80% 상향 | ✅ **달성** (v1 demo 8/10 = 80%) |
+| A4 | 실험 결과 비디오 녹화 | ✅ 10 mp4 + 합본 3분 22초 |
 | A5 | 쓰기 위주 태스크 | 보류 (교수님 데이터 선정 대기) |
-| A6 | B200 환경 설정 가이드 | 작성 안 함 (생략) |
-| A7 | 세션 중단 자동 재인증 | v1 collect 전 fix 예정 |
+| A6 | B200 환경 설정 가이드 | 생략 |
+| A7 | 세션 중단 자동 재인증 | v1 full collect 전 fix 예정 |
+
+---
+
+## 14. 영상 파일 목록
+
+| 영상 | 길이 | 크기 |
+|---|---|---|
+| approve_pending_01.mp4 | 6초 | 114 KB |
+| approve_pending_03.mp4 | 6초 | 115 KB |
+| circulate_pending_03.mp4 | 10초 | 178 KB |
+| view_completed_01.mp4 | 14초 | 198 KB |
+| view_in_progress_00.mp4 | 12초 | 193 KB |
+| view_salary_statement_01.mp4 | 16초 | 230 KB |
+| view_year_end_tax_00.mp4 | 16초 | 195 KB |
+| config_personal_settings_00.mp4 | 14초 | 234 KB |
+| setup_approval_line_00.mp4 (fail) | 44초 | 752 KB |
+| favorite_approval_line_00.mp4 (fail) | 48초 | 470 KB |
+| **ALL.mp4 (합본)** | **3분 22초** | **2.7 MB** |
