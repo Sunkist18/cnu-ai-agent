@@ -34,6 +34,9 @@ VALID_CATEGORIES = {
 	"첨부파일",
 	"결재선설정",
 	"환경설정",
+	# v2 신규 (survey-driven)
+	"공문처리",
+	"정산",
 }
 
 
@@ -81,12 +84,19 @@ def test_seeds_category_in_known_set() -> None:
 
 
 def test_seeds_curated_subset_of_seeds() -> None:
-	"""seeds_curated.json은 seeds.json의 부분집합이어야 함 (사용자 trim 결과)."""
+	"""seeds_curated.json은 seeds.json의 부분집합이거나 survey-driven 신규 seed (v2+)."""
 	if not SEEDS_CURATED_PATH.exists():
 		pytest.skip("seeds_curated.json 없음 — 사용자 review 전")
 	seeds = {s["id"] for s in _load_seeds(SEEDS_PATH)}
 	curated = {s["id"] for s in _load_seeds(SEEDS_CURATED_PATH)}
-	assert curated.issubset(seeds), f"curated에 seeds.json에 없는 id: {curated - seeds}"
+	# v2부터는 survey-driven 신규 seed (`incoming_*`, `view_or_submit_*`, etc.) 추가됨 — 부분집합 strict 검사 X
+	non_subset = curated - seeds
+	if non_subset:
+		# 신규 seed가 v2 패턴 따르는지만 확인
+		assert all(
+			isinstance(sid, str) and sid.replace("_", "").isalnum()
+			for sid in non_subset
+		), f"신규 seed id format 위반: {non_subset}"
 	assert len(curated) <= 30, f"curated가 너무 많음: {len(curated)} > 30"
 
 
@@ -98,7 +108,8 @@ def test_seeds_curated_subset_of_seeds() -> None:
 
 def test_tasks_schema_valid() -> None:
 	tasks_raw = _load_tasks(TASKS_PATH)
-	assert 90 <= len(tasks_raw) <= 130, f"task 수 90~130 밖: {len(tasks_raw)}"
+	# v0 24 seed × 4 = 96, v1 24 × 4 = 96, v2 15 × 4 = 60. seed 수에 따라 범위 다양.
+	assert 50 <= len(tasks_raw) <= 130, f"task 수 50~130 밖: {len(tasks_raw)}"
 	for t in tasks_raw:
 		Task.model_validate(t)
 
