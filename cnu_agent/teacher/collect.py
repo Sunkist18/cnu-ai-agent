@@ -41,9 +41,12 @@ from pathlib import Path
 from typing import Any
 
 from browser_use import Agent, Browser
-from browser_use.agent.views import AgentOutput
+from browser_use.agent.views import ActionResult, AgentOutput
 from browser_use.browser.views import BrowserStateSummary
+from browser_use.tools.service import Tools
+from pydantic import BaseModel, Field
 
+from cnu_agent.teacher.attachments import extract as extract_attachment
 from cnu_agent.teacher.claude_code_llm import ChatClaudeCode
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -311,6 +314,79 @@ def _build_sensitive_data_stub(task: dict, korus_url: str) -> dict[str, str] | N
 	return {f"https://*.{parent}": stubs}
 
 
+class AnalyzeAttachmentParams(BaseModel):
+	file_path: str = Field(
+		description=(
+			"분석할 첨부파일의 **절대 경로** (예: '/var/folders/.../downloads/공문.hwp'). "
+			"보통 첨부 다운로드 직후 available_file_paths 에 추가된 경로를 그대로 전달."
+		),
+	)
+
+
+def _build_collect_tools() -> Tools:
+	"""기본 Tools에 attachment 분석 액션 추가.
+
+	browser-use는 첨부 파일 binary 자체를 못 읽으므로, 다운로드된 HWP/HWPX/PDF/DOCX 등을
+	kordoc으로 markdown 추출해서 agent context에 주입한다 (조교 설문의 "공문 요약·발송"
+	워크플로 핵심).
+	"""
+	tools = Tools()
+
+	@tools.action(
+		"Read and extract text content from a downloaded attachment file "
+		"(HWP / HWPX / PDF / DOCX / XLSX). "
+		"Use AFTER a file has been downloaded (e.g., via click on PC저장 button) when you "
+		"need to see its body content to summarize, forward, or decide next steps. "
+		"Returns extracted markdown (or image path for image files). "
+		"Skip for plain images (PNG/JPG) — those are already visible in the screenshot.",
+		param_model=AnalyzeAttachmentParams,
+	)
+	async def analyze_attachment(params: AnalyzeAttachmentParams) -> ActionResult:
+		path = params.file_path.strip()
+		try:
+			result = extract_attachment(path)
+		except Exception as e:  # noqa: BLE001
+			return ActionResult(
+				error=f"첨부 분석 중 예외: {type(e).__name__}: {e}",
+				long_term_memory=f"첨부 {Path(path).name} 분석 예외 발생",
+			)
+
+		fname = Path(path).name
+		if not result.success:
+			return ActionResult(
+				error=f"첨부 분석 실패 ({fname}): {result.error}",
+				long_term_memory=f"첨부 {fname} 분석 실패: {(result.error or '')[:120]}",
+			)
+
+		if result.file_type == "image":
+			return ActionResult(
+				extracted_content=f"[이미지 첨부: {result.image_path}] (vision으로 이미 볼 수 있음)",
+				long_term_memory=f"이미지 첨부 {fname} 확인 — 화면에서 직접 확인 가능.",
+			)
+
+		md = result.markdown or ""
+		meta = result.metadata or {}
+		summary = (
+			f"## 첨부 본문 [{fname}]  ({result.file_type}, "
+			f"{meta.get('size_bytes', '?')} bytes"
+			+ (f", {meta.get('pageCount')} pages" if meta.get("pageCount") else "")
+			+ (", truncated" if meta.get("truncated") else "")
+			+ ")\n\n"
+			+ md
+		)
+		# long-term memory에는 짧게 — 본문 첫 300자
+		ltm = f"첨부 {fname} 본문 첫 300자:\n{md[:300]}"
+		return ActionResult(
+			extracted_content=summary,
+			long_term_memory=ltm,
+			# include_extracted_content_only_once=True — 본문 자체는 다음 step에만 보임 (토큰 절약)
+			include_extracted_content_only_once=True,
+		)
+
+	_ = analyze_attachment  # keep ref so registry holds it
+	return tools
+
+
 async def _collect_one(
 	task: dict,
 	out_root: Path,
@@ -375,6 +451,7 @@ async def _collect_one(
 			task=full_task,
 			llm=llm,
 			browser=browser,
+			tools=_build_collect_tools(),  # +analyze_attachment custom action
 			register_new_step_callback=step_cb,
 			use_vision=True,
 			use_judge=False,

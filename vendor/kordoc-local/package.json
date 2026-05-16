@@ -1,0 +1,16 @@
+{
+  "name": "kordoc-local",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "kordoc": "^2.7.2",
+    "pdfjs-dist": "^5.7.284"
+  }
+}

@@ -46,6 +46,10 @@ env/
 .python-version
 uv.lock
 
+# kordoc local install (npm node_modules ~50MB) — pyproject 같은 격으로 vendor 디렉토리 자체는 commit
+# vendor/kordoc-local/package.json + package-lock.json만 commit, node_modules는 ignore
+vendor/kordoc-local/node_modules/
+
 # IDE
 .vscode/
 .idea/
