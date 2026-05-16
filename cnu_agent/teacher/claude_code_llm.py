@@ -168,6 +168,21 @@ def _build_usage(usage: dict[str, Any] | None) -> ChatInvokeUsage | None:
 	)
 
 
+# SDK 가 AssistantMessage.error / ResultMessage.errors 에 넣을 수 있는 값:
+#   authentication_failed, billing_error, rate_limit, invalid_request, server_error, unknown
+# 이 중 일시적 인프라 이슈는 backoff 후 재시도 가치가 있음.
+_RETRYABLE_SDK_ERRORS = {"server_error", "rate_limit", "unknown", "overloaded"}
+
+
+class _SDKRetryableError(Exception):
+	"""내부 retry 트리거 — backoff 후 다시 시도. ainvoke 밖으로 새지 않음."""
+
+	def __init__(self, sdk_error: str, *, source: str = "assistant_message"):
+		super().__init__(f"retryable SDK error ({source}): {sdk_error}")
+		self.sdk_error = sdk_error
+		self.source = source
+
+
 @dataclass
 class ChatClaudeCode(BaseChatModel):
 	"""browser-use LLM provider that routes through Claude Agent SDK (headless).
@@ -179,10 +194,16 @@ class ChatClaudeCode(BaseChatModel):
 	  working out of the box.
 	- `tools=[]` is forced so the subprocess never enters a tool loop, matching
 	  the BaseChatModel single-turn contract.
+	- `max_retries` / `retry_base_delay`: 일시적 SDK 오류 (server_error / rate_limit /
+	  unknown / overloaded)에 대해 내부 exponential backoff 재시도. browser-use 측의
+	  step-level 6× retry보다 빠르고 (subprocess 재spawn 없음) 정확함 (retryable 만
+	  반복). authentication_failed / billing_error 등은 즉시 raise — 재시도 의미 없음.
 	"""
 
 	model: str = "claude-sonnet-4-5"
 	bare: bool = False
+	max_retries: int = 4  # 내부 재시도 횟수 (총 시도 = 1 + retries)
+	retry_base_delay: float = 5.0  # backoff 시작값 (초), 이후 *2 — 5,10,20,40s
 
 	@property
 	def provider(self) -> str:
@@ -242,6 +263,41 @@ class ChatClaudeCode(BaseChatModel):
 		output_format: type[T] | None = None,
 		**kwargs: Any,
 	) -> ChatInvokeCompletion[T] | ChatInvokeCompletion[str]:
+		"""Retry-wrapped public API. _ainvoke_once를 backoff와 함께 호출."""
+		last_err: Exception | None = None
+		for attempt in range(self.max_retries + 1):
+			try:
+				return await self._ainvoke_once(messages, output_format)
+			except _SDKRetryableError as e:
+				last_err = e
+				if attempt < self.max_retries:
+					import asyncio as _asyncio
+
+					delay = self.retry_base_delay * (2**attempt)
+					delay = min(delay, 60.0)
+					print(
+						f"  ⚠️ ChatClaudeCode retry {attempt + 1}/{self.max_retries} after "
+						f"{delay:.0f}s — {e.sdk_error}",
+						file=sys.stderr,
+					)
+					await _asyncio.sleep(delay)
+					continue
+				# 마지막 시도도 실패 — ModelProviderError로 escalate
+				raise ModelProviderError(
+					message=(
+						f"Claude Agent SDK 일시적 오류 {self.max_retries + 1}회 연속 실패: "
+						f"{e.sdk_error} (source={e.source})"
+					),
+					model=self.name,
+				) from e
+		# unreachable but mypy 안심용
+		raise ModelProviderError(message=str(last_err), model=self.name)
+
+	async def _ainvoke_once(
+		self,
+		messages: list[BaseMessage],
+		output_format: type[T] | None,
+	) -> ChatInvokeCompletion[T] | ChatInvokeCompletion[str]:
 		blocks, system_prompt = _serialize_messages(messages)
 		options, _ = self._build_options(system_prompt, output_format)
 
@@ -269,16 +325,26 @@ class ChatClaudeCode(BaseChatModel):
 					if sdk_msg.stop_reason:
 						stop_reason = sdk_msg.stop_reason
 					if sdk_msg.error:
+						err_lower = str(sdk_msg.error).lower()
+						if any(k in err_lower for k in _RETRYABLE_SDK_ERRORS):
+							raise _SDKRetryableError(sdk_msg.error, source="assistant_message")
 						raise ModelProviderError(
 							message=f"Claude Agent SDK assistant error: {sdk_msg.error}",
 							model=self.name,
 						)
 				elif isinstance(sdk_msg, SDKResultMessage):
 					if sdk_msg.is_error:
+						errors = sdk_msg.errors or []
+						errors_text = " ".join(str(e) for e in errors).lower()
+						if any(k in errors_text for k in _RETRYABLE_SDK_ERRORS):
+							raise _SDKRetryableError(
+								f"subtype={sdk_msg.subtype} errors={errors}",
+								source="result_message",
+							)
 						raise ModelProviderError(
 							message=(
 								f"Claude Agent SDK result error: subtype={sdk_msg.subtype} "
-								f"errors={sdk_msg.errors}"
+								f"errors={errors}"
 							),
 							model=self.name,
 						)
@@ -290,12 +356,11 @@ class ChatClaudeCode(BaseChatModel):
 						structured_output = sdk_msg.structured_output
 					if sdk_msg.result and not text_pieces:
 						text_pieces.append(sdk_msg.result)
-		except ModelProviderError:
+		except (_SDKRetryableError, ModelProviderError):
 			raise
 		except Exception as e:
-			raise ModelProviderError(
-				message=f"Claude Agent SDK call failed: {e}", model=self.name
-			) from e
+			# transport / connection / unexpected — retryable으로 분류
+			raise _SDKRetryableError(str(e), source="transport") from e
 
 		usage = _build_usage(usage_dict)
 		full_text = "".join(text_pieces).strip()
