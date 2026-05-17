@@ -3,10 +3,13 @@
 /trajectories/
 /trajectories_v2/
 /trajectories_demo/
+/trajectories_mlx_v2/
 /discovery/
+/dashboard/
 /tasks/
 /data/
 /data_v2/
+/eval_mlx_v2/
 /ckpt/
 /screenshots/
 *.png
