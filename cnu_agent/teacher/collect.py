@@ -394,6 +394,9 @@ async def _collect_one(
 	max_steps: int,
 	korus_url: str,
 	record_video_dir: Path | None = None,
+	fresh_login: bool = False,
+	korus_username: str | None = None,
+	korus_password: str | None = None,
 ) -> CollectResult:
 	task_id = task["id"]
 	out_dir = out_root / task_id
@@ -411,11 +414,13 @@ async def _collect_one(
 		# headless=True에서 KORUS 메뉴 렌더 이상 (smoke test에서 완료문서 못 찾음).
 		# discover.py는 headless=False에서 정상 동작 — 같은 모드로 통일.
 		headless=False,
-		storage_state=str(auth_path),
 		user_data_dir=None,
 		# KORUS 도메인 잠금 — sensitive_data 안전성 + 외부 사이트 우회 차단
 		allowed_domains=["*.korus.ac.kr", "*.cnu.ac.kr"],
 	)
+	# v3: fresh_login 모드에서는 storage_state 안 씀 (login trajectory 학습 데이터에 포함시킴)
+	if not fresh_login:
+		browser_kwargs["storage_state"] = str(auth_path)
 	if record_video_dir is not None:
 		video_dir = record_video_dir / task_id
 		video_dir.mkdir(parents=True, exist_ok=True)
@@ -426,6 +431,32 @@ async def _collect_one(
 	llm = ChatClaudeCode()
 
 	sensitive = _build_sensitive_data_stub(task, korus_url)
+	# v3: fresh_login 시 sensitive_data에 KORUS 자격증명 추가 (browser는 실 입력, agent는 placeholder만 봄)
+	login_instruction_v3 = ""
+	if fresh_login and korus_username and korus_password:
+		from urllib.parse import urlparse
+		host = urlparse(korus_url).hostname or "korus.ac.kr"
+		parts = host.split(".")
+		parent_dom = ".".join(parts[-3:]) if len(parts) >= 3 else host
+		login_secrets = {f"https://*.{parent_dom}": {
+			"korus_username": korus_username,
+			"korus_password": korus_password,
+		}}
+		if sensitive:
+			# merge: task의 기존 sensitive와 합침
+			for k, v in login_secrets.items():
+				sensitive.setdefault(k, {}).update(v)
+		else:
+			sensitive = login_secrets
+		login_instruction_v3 = (
+			"\n## 로그인 절차 (첫 단계)\n"
+			f"1. {korus_url} 진입 → sso.korus.ac.kr로 redirect.\n"
+			"2. 사용자명 필드에 `<secret>korus_username</secret>` 입력.\n"
+			"3. 비밀번호 필드에 `<secret>korus_password</secret>` 입력.\n"
+			"4. 로그인 버튼 클릭 → 대시보드 도달 후 task 진행.\n"
+			"\n## 만족도 조사 팝업\n"
+			"- 로그인 직후 '만족도 조사' 팝업 뜨면 '다음 변경 전까지 보지 않기' 체크 후 X 클릭.\n"
+		)
 
 	error_msg: str | None = None
 	steps = 0
@@ -434,7 +465,8 @@ async def _collect_one(
 		# 시작 URL을 task에 prepend — Agent가 자체 navigate 안 하면 첫 step에서 막힘
 		full_task = (
 			f"KORUS({korus_url})에서 다음 작업을 수행하세요. **read-only 모드**: "
-			f"메뉴 클릭·페이지 이동·조회까지만, 절대 제출/저장/승인/반려/상신 버튼 누르지 않습니다.\n\n"
+			f"메뉴 클릭·페이지 이동·조회까지만, 절대 제출/저장/승인/반려/상신 버튼 누르지 않습니다.\n"
+			f"{login_instruction_v3}\n"
 			f"task: {task['task']}\n\n"
 			# F1 — read-only 조회 task의 success 기준 명시 (v0 분석에서 페이지 도달 + 빈 결과 정확히\n"
 			# 인식했는데도 self-eval에서 fail로 표시한 케이스가 3건 있었음 — analysis/v0_failure_modes.md §3.3)
@@ -509,12 +541,23 @@ async def run_collect(
 	limit: int | None,
 	korus_url: str,
 	record_video_dir: Path | None = None,
+	fresh_login: bool = False,
+	korus_username: str | None = None,
+	korus_password: str | None = None,
+	skip_broken: bool = False,
 ) -> int:
-	if not auth_path.exists():
+	if not fresh_login and not auth_path.exists():
 		print(f"[FAIL] storage_state 없음: {auth_path}", file=sys.stderr)
+		return 2
+	if fresh_login and not (korus_username and korus_password):
+		print("[FAIL] --fresh-login 모드는 KORUS_USERNAME/PASSWORD 필요 (.env)", file=sys.stderr)
 		return 2
 
 	tasks = _load_tasks(tasks_path)
+	if skip_broken:
+		before = len(tasks)
+		tasks = [t for t in tasks if "{{" not in t.get("task", "") and "}}" not in t.get("task", "")]
+		print(f"[INFO] skip-broken: {before} → {len(tasks)} (placeholder 제거)")
 	selected = _select_tasks(tasks, categories, ids, limit)
 	print(f"[INFO] tasks selected: {len(selected)}/{len(tasks)} (categories={categories}, ids={len(ids) if ids else 'all'}, limit={limit})")
 	print(f"[INFO] out: {out_root}")
@@ -527,7 +570,11 @@ async def run_collect(
 		print(f"\n[{i + 1}/{len(selected)}] {task['id']} — {task['task'][:80]}", flush=True)
 		try:
 			result = await _collect_one(
-				task, out_root, auth_path, max_steps, korus_url, record_video_dir=record_video_dir
+				task, out_root, auth_path, max_steps, korus_url,
+				record_video_dir=record_video_dir,
+				fresh_login=fresh_login,
+				korus_username=korus_username,
+				korus_password=korus_password,
 			)
 		except Exception as e:  # noqa: BLE001
 			print(f"  ❌ unexpected exception: {e}", file=sys.stderr)
@@ -595,6 +642,10 @@ def main(argv: list[str] | None = None) -> int:
 		default=None,
 		help="활성 시 task별 mp4 녹화 → <dir>/<task_id>/video-XXXX.webm",
 	)
+	parser.add_argument("--fresh-login", action="store_true",
+	                    help="v3: storage_state 안 쓰고 agent가 로그인부터 (학생 모델이 login 분포 학습)")
+	parser.add_argument("--skip-broken", action="store_true",
+	                    help="v3: task 본문에 {{placeholder}} 남은 항목 제외")
 	args = parser.parse_args(argv)
 
 	categories: list[str] | None = None
@@ -611,6 +662,22 @@ def main(argv: list[str] | None = None) -> int:
 
 	url = args.url or _load_url_from_env()
 
+	# v3: fresh_login 시 .env에서 자격증명 로드
+	korus_user = korus_pwd = None
+	if args.fresh_login:
+		from pathlib import Path as _P
+		env = _P(__file__).resolve().parents[2] / ".env"
+		if env.exists():
+			for line in env.read_text(encoding="utf-8").splitlines():
+				line = line.strip()
+				if "=" not in line or line.startswith("#"):
+					continue
+				k, v = line.split("=", 1)
+				if k.strip() == "KORUS_USERNAME":
+					korus_user = v.strip()
+				elif k.strip() == "KORUS_PASSWORD":
+					korus_pwd = v.strip()
+
 	return asyncio.run(
 		run_collect(
 			tasks_path=args.tasks,
@@ -622,6 +689,10 @@ def main(argv: list[str] | None = None) -> int:
 			limit=args.limit,
 			korus_url=url,
 			record_video_dir=args.record_video,
+			fresh_login=args.fresh_login,
+			korus_username=korus_user,
+			korus_password=korus_pwd,
+			skip_broken=args.skip_broken,
 		)
 	)
 

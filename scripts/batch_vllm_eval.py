@@ -104,24 +104,29 @@ async def _run_one(
 
 	browser = Browser(**browser_kwargs)
 
-	sensitive_data = None
+	# v3.2: 항상 sensitive_data 제공 (storage_state 만료 시 fallback re-login 가능)
+	sensitive_data = {
+		"https://*.korus.ac.kr": {
+			"korus_username": username,
+			"korus_password": password,
+		}
+	}
 	login_instruction = ""
 	if not use_storage_state:
-		sensitive_data = {
-			"https://*.korus.ac.kr": {
-				"korus_username": username,
-				"korus_password": password,
-			}
-		}
-		# v3: 더 imperative + popup 대응 + 무한 retry 금지
+		# v3.1: v2 prompt로 롤백 — 더 imperative 버전이 model 혼란 (v3 0/24 fail 확인)
 		login_instruction = (
-			"\n## 로그인 (반드시 순서대로 — 위반 시 task 실패)\n"
-			"1. URL에 'login' 또는 'lginView' 포함 시: 한 step에 **2개 input action**을 동시 emit:\n"
-			"   - 사용자명 필드(placeholder='아이디' 또는 id 'userId'/'username') → `<secret>korus_username</secret>`\n"
-			"   - 비밀번호 필드(placeholder='비밀번호' 또는 id 'password'/'pwd') → `<secret>korus_password</secret>`\n"
-			"2. 다음 step에서 로그인 버튼(텍스트 '로그인', NOT '아이디 찾기')만 1번 클릭. 그 후 wait(seconds=3).\n"
-			"3. popup/dialog 뜨면 X 또는 닫기 클릭. 동일 동작 무한 반복 금지 — 같은 index 3번 이상 클릭했으면 다른 방식 시도.\n"
-			"4. URL이 'login'/'lginView' 빠지고 메뉴가 보이면 로그인 성공 — 다음 단계로.\n"
+			"\n## 로그인 절차 (첫 단계)\n"
+			f"1. {korus_url} 진입 → sso.korus.ac.kr로 redirect.\n"
+			"2. 사용자명 필드에 `<secret>korus_username</secret>` 입력.\n"
+			"3. 비밀번호 필드에 `<secret>korus_password</secret>` 입력.\n"
+			"4. 로그인 버튼 클릭 → 대시보드 도달 후 task 진행.\n"
+		)
+	else:
+		# storage_state 모드여도 만료 가능성 — login URL 보이면 자동 재로그인 안내
+		login_instruction = (
+			"\n## 세션 fallback\n"
+			"- 보통은 이미 로그인된 상태. 단 URL에 'login'/'lginView' 보이면 세션 만료:\n"
+			f"  사용자명 필드에 `<secret>korus_username</secret>`, 비밀번호 필드에 `<secret>korus_password</secret>` 입력 후 로그인 버튼.\n"
 		)
 
 	# v3: seed별 메뉴 경로 힌트 주입
@@ -138,12 +143,14 @@ async def _run_one(
 		f"메뉴 클릭·페이지 이동·조회까지만, 절대 제출/저장/승인/반려/상신 버튼 누르지 않습니다.\n"
 		f"{login_instruction}"
 		f"{menu_hint}\n"
+		"## 만족도 조사 팝업\n"
+		"- 페이지 로드 직후 '만족도 조사' 또는 'survey' 팝업/모달이 뜰 수 있음. 이 경우:\n"
+		"  '다음 변경 전까지 보지 않기' 또는 '오늘 그만 보기' 체크 후 X 클릭. 없으면 그냥 X로 닫고 진행.\n"
+		"\n"
 		f"task: {task_text}\n\n"
-		"## Done 호출 규칙 (중요)\n"
-		"- 목적 페이지(또는 form)에 도달하면 즉시 done(success=True). 추가 탐색 욕심 ❌.\n"
-		"- 데이터 0건이라도 도달했으면 success=True. 'no items'은 정상 응답.\n"
-		"- 같은 메뉴를 4번 이상 못 찾았으면 done(success=False)로 깔끔히 종료. 무한 반복 ❌.\n"
-		"- read-only 본질은 '조회 동작 완료'지 데이터 유무 아님."
+		"## Done 평가 규칙\n"
+		"- 의도한 페이지 도달 + 결과 확인 → done(success=True). 데이터 0건도 OK.\n"
+		"- read-only 조회의 본질은 조회 동작 완료지, 데이터 유무 아님."
 	)
 
 	err = None
