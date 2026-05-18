@@ -15,6 +15,19 @@ Run:
 
 from __future__ import annotations
 
+# B200/headless 환경 대응 — browser_use 모듈 import 시 X display 검색하다 hang나는 것 우회
+# (browser_use.browser.profile.detect_display_configuration → screeninfo.get_monitors → xlib.XOpenDisplay)
+import os as _os
+if not _os.environ.get("DISPLAY"):
+	try:
+		import screeninfo as _si
+		class _FakeMonitor:
+			x = 0; y = 0; width = 1920; height = 1080
+			width_mm = 0; height_mm = 0; name = "fake"
+		_si.get_monitors = lambda *a, **kw: [_FakeMonitor()]
+	except Exception:
+		pass
+
 import argparse
 import asyncio
 import json
