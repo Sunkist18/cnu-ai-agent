@@ -132,12 +132,16 @@ async def _run_one(
 	login_instruction = ""
 	if not use_storage_state:
 		# v3.1: v2 prompt로 롤백 — 더 imperative 버전이 model 혼란 (v3 0/24 fail 확인)
+		# v3.3: DOM selector 명시 주입 — model이 wait 무한루프에 빠지지 않도록
 		login_instruction = (
-			"\n## 로그인 절차 (첫 단계)\n"
-			f"1. {korus_url} 진입 → sso.korus.ac.kr로 redirect.\n"
-			"2. 사용자명 필드에 `<secret>korus_username</secret>` 입력.\n"
-			"3. 비밀번호 필드에 `<secret>korus_password</secret>` 입력.\n"
-			"4. 로그인 버튼 클릭 → 대시보드 도달 후 task 진행.\n"
+			"\n## 로그인 절차 (반드시 실행, wait만 반복 금지)\n"
+			f"1. {korus_url} 진입 → sso.korus.ac.kr/poc/uf/LoginCtr/lginView.do 로 redirect.\n"
+			"2. URL에 'lginView' 보이면 한 step에 2 action으로 동시 emit:\n"
+			"   - input action: `<input id=userId01 placeholder=아이디를 입력해주세요>` 에 `<secret>korus_username</secret>`\n"
+			"   - input action: `<input id=emplyrSecretNo type=password placeholder=비밀번호를 입력해주세요>` 에 `<secret>korus_password</secret>`\n"
+			"3. 다음 step: `<a title=로그인>` 또는 텍스트 '로그인'인 element 클릭 (NOT '아이디 찾기', NOT '비밀번호 찾기').\n"
+			"4. 그 후 wait(3s) 한 번. URL이 'login'/'lginView' 빠지면 ✅ 로그인 완료, 다음 단계 진행.\n"
+			"5. 'skeleton' 또는 'loading' 본문 보여도 메뉴/링크가 보이면 클릭 진행. wait만 반복 ❌.\n"
 		)
 	else:
 		# storage_state 모드여도 만료 가능성 — login URL 보이면 자동 재로그인 안내
