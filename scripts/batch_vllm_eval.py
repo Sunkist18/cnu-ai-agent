@@ -87,6 +87,8 @@ async def _run_one(
 	max_steps: int,
 	auth_path: Path | None,
 	seed_id: str | None = None,
+	headless: bool = False,
+	proxy_server: str | None = None,
 ) -> dict:
 	t0 = time.time()
 	out_dir = out_root / task_id
@@ -95,10 +97,13 @@ async def _run_one(
 	use_storage_state = auth_path is not None and auth_path.exists()
 
 	browser_kwargs = dict(
-		headless=False,
+		headless=headless,
 		user_data_dir=None,
 		allowed_domains=["*.korus.ac.kr", "*.cnu.ac.kr"],
 	)
+	if proxy_server:
+		# SSH -D dynamic forwarding 으로 학내망 접근 (B200 → 168.188.129.198 → KORUS)
+		browser_kwargs["proxy"] = {"server": proxy_server}
 	if use_storage_state:
 		browser_kwargs["storage_state"] = str(auth_path)
 
@@ -305,6 +310,8 @@ async def main_async(args):
 				max_steps=args.max_steps,
 				auth_path=auth_path,
 				seed_id=t.get("seed_id"),
+				headless=args.headless,
+				proxy_server=args.proxy,
 			)
 		except Exception as e:  # noqa: BLE001
 			rec = {
@@ -361,6 +368,10 @@ def main(argv: list[str] | None = None) -> int:
 	parser.add_argument("--resume", action="store_true")
 	parser.add_argument("--use-storage-state", action="store_true",
 	                    help="auth/korus_storage_state.json 사용 (학습 분포 매칭). 없으면 fresh-login fallback")
+	parser.add_argument("--headless", action="store_true",
+	                    help="B200 등 headless 서버에서 Xvfb 없이 Chromium headless 모드")
+	parser.add_argument("--proxy", type=str, default=None,
+	                    help="SOCKS5 proxy URL (예: socks5://localhost:8080) — B200에서 학내망 접근용")
 	args = parser.parse_args(argv)
 	return asyncio.run(main_async(args))
 
