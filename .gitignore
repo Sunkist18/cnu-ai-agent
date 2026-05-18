@@ -10,6 +10,7 @@
 /data/
 /data_v2/
 /eval_mlx_v2/
+/eval_vllm_*/
 /ckpt/
 /screenshots/
 *.png
