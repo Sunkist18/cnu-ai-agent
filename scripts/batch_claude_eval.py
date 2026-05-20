@@ -87,6 +87,9 @@ def _build_full_task(task_text: str, korus_url: str, seed_id: str | None,
 		f"\ntask: {task_text}\n\n"
 		"## Done 규칙\n"
 		"- 목적 페이지 도달 + 결과 확인 → 즉시 done(success=True). 데이터 0건도 OK.\n"
+		"- **done의 text에는 사용자에게 보여줄 결과를 정리**: 자연어 1-2줄 + 목록(있으면).\n"
+		"  예: \"결재대기함 조회 결과, 대기 중인 문서 3건:\\n - 출장 신청서 (홍길동)\\n - 휴가원 (김철수)\\n - 물품 구매 (이영희)\"\n"
+		"  데이터 0건이면 \"조회 완료, 해당 항목 없음\" 처럼 명시.\n"
 	)
 	return full_task, sensitive_data
 
@@ -120,7 +123,7 @@ async def _run_one(task_id: str, task_text: str, seed_id: str | None, llm: ChatC
 			for act in (mo.get("action") if isinstance(mo, dict) else []) or []:
 				if isinstance(act, dict) and "done" in act:
 					success = bool(act["done"].get("success"))
-					final_text = (act["done"].get("text") or "")[:200]
+					final_text = (act["done"].get("text") or "")[:800]
 					break
 		try: history.save_to_file(out_dir / "history.json")
 		except Exception: pass
@@ -163,7 +166,8 @@ async def main_async(args):
 	pending = [(tid, t) for tid, t in selected if tid not in done_ids]
 	print(f"[INFO] to run: {len(pending)} (resume skip {len(done_ids)})")
 
-	llm = ChatClaudeCode()
+	llm = ChatClaudeCode(model=args.model)
+	print(f"[INFO] model: {args.model}")
 	t0 = time.time(); done = 0; succ = 0
 	stop = False
 	def _sig(s, f):
@@ -208,6 +212,7 @@ def main(argv=None):
 	p.add_argument("--max-steps", type=int, default=25)
 	p.add_argument("--resume", action="store_true")
 	p.add_argument("--headless", action="store_true", help="Mac 화면 잠김 시 필요")
+	p.add_argument("--model", default="claude-sonnet-4-5", help="claude 모델 (예: claude-sonnet-4-7, sonnet)")
 	return asyncio.run(main_async(p.parse_args(argv)))
 
 
