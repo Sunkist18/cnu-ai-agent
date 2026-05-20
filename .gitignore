@@ -80,3 +80,5 @@ tensorboard/
 *.bin
 *.pt
 *.pth
+/integration_results/
+/eval_claude*/

@@ -1,0 +1,58 @@
+{
+  "_README": "통합테스트 시스템별 설정. 각 팀원이 본인 시스템 블록 채움. prompt_file은 repo 상대경로. login 없으면 생략(공개 페이지). secret_domain은 sensitive_data 스코프.",
+
+  "KORUS": {
+    "url": "https://cnu.korus.ac.kr/",
+    "prompt_file": "prompts/korus.txt",
+    "allowed_domains": ["*.korus.ac.kr", "*.cnu.ac.kr"],
+    "login": {
+      "username_env": "KORUS_USERNAME",
+      "password_env": "KORUS_PASSWORD",
+      "username_key": "korus_username",
+      "password_key": "korus_password",
+      "secret_domain": "https://*.korus.ac.kr"
+    }
+  },
+
+  "통합정보시스템": {
+    "url": "https://cnuit.cnu.ac.kr/",
+    "prompt_file": "prompts/cnuit.txt",
+    "allowed_domains": ["*.cnu.ac.kr"],
+    "login": {
+      "username_env": "CNU_ID",
+      "password_env": "CNU_PW",
+      "username_key": "cnu_id",
+      "password_key": "cnu_pw",
+      "secret_domain": "https://*.cnu.ac.kr"
+    },
+    "_note": "박경서 담당. portal.cnu.ac.kr 로그인 → 통합정보시스템 새 탭(iframe). 프롬프트 prompts/cnuit.txt 채울 것."
+  },
+
+  "학과사이트": {
+    "url": "https://computer.cnu.ac.kr/",
+    "prompt_file": "prompts/dept.txt",
+    "allowed_domains": ["*.cnu.ac.kr"],
+    "_note": "진민혁 담당. 로그인 필요시 login 블록 추가."
+  },
+
+  "CNU도서관": {
+    "url": "https://library.cnu.ac.kr/",
+    "prompt_file": "prompts/library.txt",
+    "allowed_domains": ["*.cnu.ac.kr"],
+    "_note": "박소윤 담당. 도서 검색 등 공개 페이지 위주면 login 생략."
+  },
+
+  "사이버캠퍼스": {
+    "url": "https://cyber.cnu.ac.kr/",
+    "prompt_file": "prompts/cyber.txt",
+    "allowed_domains": ["*.cnu.ac.kr"],
+    "login": {
+      "username_env": "CNU_ID",
+      "password_env": "CNU_PW",
+      "username_key": "cnu_id",
+      "password_key": "cnu_pw",
+      "secret_domain": "https://*.cnu.ac.kr"
+    },
+    "_note": "정재현 담당."
+  }
+}
