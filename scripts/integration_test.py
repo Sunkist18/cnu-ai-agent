@@ -123,9 +123,12 @@ def _build_full_task(system_cfg: dict, task_text: str, env: dict) -> tuple[str, 
 			dom = login.get("secret_domain", "https://*.cnu.ac.kr")
 			sensitive = {dom: {login["username_key"]: u, login["password_key"]: p}}
 
+	login_instruction = system_cfg.get("login_instruction", "")
+
 	full_task = (
-		f"{prompt}\n\n"
-		f"대상 시스템: {system_cfg.get('name','')} ({url})\n"
+		f"{prompt}\n"
+		f"{login_instruction}\n"
+		f"대상 시스템: {system_cfg.get('name','')} (시작 URL: {url})\n"
 		f"task: {task_text}\n"
 	)
 	return full_task, sensitive

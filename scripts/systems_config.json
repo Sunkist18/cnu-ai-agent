@@ -1,58 +1,82 @@
 {
-  "_README": "통합테스트 시스템별 설정. 각 팀원이 본인 시스템 블록 채움. prompt_file은 repo 상대경로. login 없으면 생략(공개 페이지). secret_domain은 sensitive_data 스코프.",
+  "_README": "통합테스트 시스템별 설정. 키 = all-task.xlsx '시스템' 열 값과 정확히 일치. prompt_file=repo 상대경로. login_instruction=에이전트 로그인 절차(없으면 공개). login=sensitive_data 생성용(env키→placeholder키, secret_domain 스코프).",
 
-  "KORUS": {
+  "전자결재": {
     "url": "https://cnu.korus.ac.kr/",
     "prompt_file": "prompts/korus.txt",
     "allowed_domains": ["*.korus.ac.kr", "*.cnu.ac.kr"],
+    "login_instruction": "\n## 로그인 (URL에 'login'/'lginView' 보이면)\n- <input id=userId01>에 `<secret>korus_username</secret>`, <input id=emplyrSecretNo type=password>에 `<secret>korus_password</secret>` 입력 후 <a title=로그인> 클릭.\n- 만족도 조사 팝업 뜨면 '다음 변경 전까지 보지 않기' 체크 후 X.\n",
     "login": {
-      "username_env": "KORUS_USERNAME",
-      "password_env": "KORUS_PASSWORD",
-      "username_key": "korus_username",
-      "password_key": "korus_password",
+      "username_env": "KORUS_USERNAME", "password_env": "KORUS_PASSWORD",
+      "username_key": "korus_username", "password_key": "korus_password",
       "secret_domain": "https://*.korus.ac.kr"
     }
   },
 
   "통합정보시스템": {
-    "url": "https://cnuit.cnu.ac.kr/",
+    "url": "https://portal.cnu.ac.kr/login.jsp",
     "prompt_file": "prompts/cnuit.txt",
     "allowed_domains": ["*.cnu.ac.kr"],
+    "login_instruction": "\n## 로그인 (CNU 포털 SSO)\n1. portal.cnu.ac.kr/login.jsp 에서 사용자명(name=user_id)에 `<secret>cnu_id</secret>`, 비밀번호(name=user_password)에 `<secret>cnu_pw</secret>` 입력 후 Enter/로그인.\n2. 로그인 후 '통합정보시스템' 버튼 클릭 → cnuit.cnu.ac.kr 새 탭 열림 → 새 탭으로 전환해서 작업.\n",
     "login": {
-      "username_env": "CNU_ID",
-      "password_env": "CNU_PW",
-      "username_key": "cnu_id",
-      "password_key": "cnu_pw",
+      "username_env": "CNU_ID", "password_env": "CNU_PW",
+      "username_key": "cnu_id", "password_key": "cnu_pw",
       "secret_domain": "https://*.cnu.ac.kr"
-    },
-    "_note": "박경서 담당. portal.cnu.ac.kr 로그인 → 통합정보시스템 새 탭(iframe). 프롬프트 prompts/cnuit.txt 채울 것."
-  },
-
-  "학과사이트": {
-    "url": "https://computer.cnu.ac.kr/",
-    "prompt_file": "prompts/dept.txt",
-    "allowed_domains": ["*.cnu.ac.kr"],
-    "_note": "진민혁 담당. 로그인 필요시 login 블록 추가."
-  },
-
-  "CNU도서관": {
-    "url": "https://library.cnu.ac.kr/",
-    "prompt_file": "prompts/library.txt",
-    "allowed_domains": ["*.cnu.ac.kr"],
-    "_note": "박소윤 담당. 도서 검색 등 공개 페이지 위주면 login 생략."
+    }
   },
 
   "사이버캠퍼스": {
-    "url": "https://cyber.cnu.ac.kr/",
+    "url": "https://dcs-lcms.cnu.ac.kr/",
     "prompt_file": "prompts/cyber.txt",
     "allowed_domains": ["*.cnu.ac.kr"],
+    "login_instruction": "\n## 로그인 (form login)\n- 아이디 필드에 `<secret>x_user_id</secret>`, 비밀번호 필드에 `<secret>x_user_pw</secret>` 입력 후 로그인.\n- 로그인 후 체크리스트/쪽지 팝업 닫고 진행.\n",
     "login": {
-      "username_env": "CNU_ID",
-      "password_env": "CNU_PW",
-      "username_key": "cnu_id",
-      "password_key": "cnu_pw",
+      "username_env": "CNU_ID", "password_env": "CNU_PW",
+      "username_key": "x_user_id", "password_key": "x_user_pw",
       "secret_domain": "https://*.cnu.ac.kr"
-    },
-    "_note": "정재현 담당."
+    }
+  },
+
+  "학사지원시스템": {
+    "url": "https://with.cnu.ac.kr",
+    "prompt_file": "prompts/haksa.txt",
+    "allowed_domains": ["*.cnu.ac.kr"],
+    "login_instruction": "\n## 로그인 (CNU 포털 SSO 연동)\n- with.cnu.ac.kr 진입 시 로그인 필요하면 사용자명에 `<secret>cnu_id</secret>`, 비밀번호에 `<secret>cnu_pw</secret>` 입력 후 로그인.\n- 로그인 직후 공지 팝업은 '오늘하루열지않기' 또는 '닫기' 클릭.\n",
+    "login": {
+      "username_env": "CNU_ID", "password_env": "CNU_PW",
+      "username_key": "cnu_id", "password_key": "cnu_pw",
+      "secret_domain": "https://*.cnu.ac.kr"
+    }
+  },
+
+  "도서관": {
+    "url": "https://library.cnu.ac.kr",
+    "prompt_file": "prompts/library.txt",
+    "allowed_domains": ["*.cnu.ac.kr"],
+    "login_instruction": "\n## 로그인\n- 도서/자료 검색은 로그인 불필요(공개). 단 '대출현황' 등 My Library 기능은 로그인 필요.\n- 로그인 화면 뜨면 사용자명에 `<secret>cnu_id</secret>`, 비밀번호에 `<secret>cnu_pw</secret>` 입력.\n",
+    "login": {
+      "username_env": "CNU_ID", "password_env": "CNU_PW",
+      "username_key": "cnu_id", "password_key": "cnu_pw",
+      "secret_domain": "https://*.cnu.ac.kr"
+    }
+  },
+
+  "학과홈페이지": {
+    "url": "https://computer.cnu.ac.kr/computer/index.do",
+    "prompt_file": "prompts/dept.txt",
+    "allowed_domains": ["*.cnu.ac.kr"],
+    "login_instruction": ""
+  },
+
+  "통합": {
+    "url": "https://portal.cnu.ac.kr/login.jsp",
+    "prompt_file": "prompts/integrated.txt",
+    "allowed_domains": ["*.cnu.ac.kr"],
+    "login_instruction": "\n## 로그인 (CNU 포털 SSO — cross-system 시작점)\n1. portal.cnu.ac.kr/login.jsp 에서 name=user_id에 `<secret>cnu_id</secret>`, name=user_password에 `<secret>cnu_pw</secret>` 입력 후 Enter.\n2. 이후 통합정보시스템/사이버캠퍼스/도서관으로 이동하며 작업. SSO 연동으로 재로그인 최소화, 로그인 화면 다시 뜨면 같은 자격증명 사용.\n",
+    "login": {
+      "username_env": "CNU_ID", "password_env": "CNU_PW",
+      "username_key": "cnu_id", "password_key": "cnu_pw",
+      "secret_domain": "https://*.cnu.ac.kr"
+    }
   }
 }
