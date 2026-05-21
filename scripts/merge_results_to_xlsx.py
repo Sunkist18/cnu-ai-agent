@@ -36,11 +36,20 @@ def main(argv=None) -> int:
 		print(f"[FAIL] {args.results} 없음", file=sys.stderr)
 		return 2
 
-	# 결과 CSV: (시스템, 시스템_연번) → metrics dict
+	def _norm_num(v) -> str:
+		"""연번 정규화 — '2', 2, 2.0, '2.0' 모두 '2'로."""
+		if v is None:
+			return ""
+		try:
+			return str(int(float(v)))
+		except (ValueError, TypeError):
+			return str(v).strip()
+
+	# 결과 CSV: (시스템, task본문) → metrics dict  (연번이 xlsx에서 수식일 수 있어 task로 매칭)
 	res: dict[tuple[str, str], dict] = {}
 	with args.results.open(encoding="utf-8-sig") as f:
 		for r in csv.DictReader(f):
-			key = ((r.get("시스템") or "").strip(), str(r.get("시스템_연번") or "").strip())
+			key = ((r.get("시스템") or "").strip(), (r.get("task") or "").strip())
 			res[key] = r
 	print(f"[INFO] 결과 {len(res)}건 로드")
 
@@ -52,18 +61,18 @@ def main(argv=None) -> int:
 	header = [str(c.value).strip() if c.value is not None else "" for c in ws[1]]
 	col_idx = {name: i + 1 for i, name in enumerate(header)}  # 1-based
 	sys_c = col_idx.get("시스템")
-	num_c = col_idx.get("시스템_연번")
-	if not sys_c or not num_c:
-		print(f"[FAIL] '시스템'/'시스템_연번' 열 못 찾음: {header}", file=sys.stderr)
+	task_c = col_idx.get("task")
+	if not sys_c or not task_c:
+		print(f"[FAIL] '시스템'/'task' 열 못 찾음: {header}", file=sys.stderr)
 		return 2
 
 	filled = 0
 	for row in range(2, ws.max_row + 1):
 		s = ws.cell(row=row, column=sys_c).value
-		n = ws.cell(row=row, column=num_c).value
-		if s is None:
+		t = ws.cell(row=row, column=task_c).value
+		if s is None or t is None:
 			continue
-		key = (str(s).strip(), str(n).strip() if n is not None else "")
+		key = (str(s).strip(), str(t).strip())
 		if key not in res:
 			continue
 		r = res[key]
