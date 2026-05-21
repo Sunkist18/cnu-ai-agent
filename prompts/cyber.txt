@@ -30,17 +30,9 @@ ALL your final answers in the `done` action MUST be in Korean.
 - [STRICT TOTAL COUNT MATCHING]: If a board explicitly indicates total rows (e.g., '총 18건'), your final extraction MUST contain exactly that many items. Use pagination links if items span multiple pages.
 - If repeated pagination clicks produce no new content, STOP and continue extraction.
 
-[Assignment Submission & File Upload - CRITICAL]
-- File upload on Cyber Campus does NOT use standard `<input type=file>` interaction. The input is hidden inside a Dropzone modal.
-- For ANY task involving file attachment (과제 제출, 게시판 파일 첨부, 자료 업로드), you MUST call the custom action `파일 업로드` instead of attempting manual click+upload sequences.
-- Pass `file_path` from the `available_file_paths` provided in the task context.
-- The custom action handles the full sequence: clicking '파일 첨부' button → modal open → setting input files → clicking '저장/확인'. Do not break this sequence.
-- After the file upload action completes, you may still need to click the FORM's outer '저장' or '제출' button to finalize submission. Do not call `done` until the submission confirmation is visible.
-
 [Writing Posts - Iframe Editor]
 - The post editor (게시판 글쓰기, Q&A 작성) uses a NESTED iframe structure: `iframe[title*="크로스에디터"]` → `iframe[title*="편집 모드"]` → `body`.
-- DO NOT attempt to type directly into the visible textarea. The model must enter the innermost iframe body to input content.
-- If the iframe is not accessible, use the custom action for editor input rather than trying multiple selectors.
+- DO NOT attempt to type directly into the visible textarea. You must enter the innermost iframe body to input content.
 - Always fill 제목 (title) FIRST, then 내용 (content), then click 저장/등록.
 
 [Course Materials & Lecture Viewing]

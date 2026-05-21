@@ -41,9 +41,90 @@ from datetime import datetime
 from pathlib import Path
 
 from browser_use import Agent, Browser
+from browser_use.agent.views import ActionResult
+from browser_use.tools.service import Tools
 from cnu_agent.teacher.claude_code_llm import ChatClaudeCode
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+# ──────────────────────────────────────────────
+# 커스텀 액션: extract_tables (통합정보시스템 등 표 데이터 추출)
+# DOM 기반 (table + iframe table + ARIA grid). CDP Runtime.evaluate 사용.
+# ──────────────────────────────────────────────
+_EXTRACT_JS = r"""
+(() => {
+  function fromDoc(doc, prefix) {
+    const out = [];
+    doc.querySelectorAll('table').forEach((tbl, ti) => {
+      const headers = [], rows = [];
+      const hdrRow = tbl.querySelector('thead tr, tr:first-child');
+      if (hdrRow) hdrRow.querySelectorAll('th,td').forEach(c => { const t=(c.innerText||'').trim(); if(t) headers.push(t); });
+      tbl.querySelectorAll('tbody tr, tr:not(:first-child)').forEach(tr => {
+        const row=[]; tr.querySelectorAll('td,th').forEach(c => row.push((c.innerText||'').trim()));
+        if (row.some(v=>v)) rows.push(row);
+      });
+      if (rows.length) out.push({title: prefix+'표'+(ti+1), headers, rows});
+    });
+    // ARIA grid (eXbuilder6 등)
+    doc.querySelectorAll('[role="grid"],[role="treegrid"]').forEach((g, gi) => {
+      const headers=[]; g.querySelectorAll('[role="columnheader"]').forEach(c=>{const t=(c.innerText||'').trim(); if(t) headers.push(t);});
+      const rows=[];
+      g.querySelectorAll('[role="row"]').forEach(r=>{
+        if (r.querySelector('[role="columnheader"]')) return;
+        const cells=[...r.querySelectorAll('[role="gridcell"]')].map(c=>(c.innerText||'').trim());
+        if (cells.length && cells.some(v=>v)) rows.push(cells);
+      });
+      if (rows.length) out.push({title: prefix+'그리드'+(gi+1), headers, rows});
+    });
+    return out;
+  }
+  let all = fromDoc(document, '');
+  document.querySelectorAll('iframe').forEach((f, fi) => {
+    try { const d=f.contentDocument||f.contentWindow?.document; if(d&&d.body) fromDoc(d,'iframe'+(fi+1)+'_').forEach(t=>all.push(t)); } catch(e){}
+  });
+  return JSON.stringify(all);
+})()
+"""
+
+
+def _build_tools() -> Tools:
+	tools = Tools()
+
+	@tools.action(
+		"페이지의 모든 표(table/grid)를 추출해 구조화 JSON으로 반환. "
+		"성적·수강목록·교육과정·시간표 등 표 데이터가 필요할 때 사용. "
+		"반환값을 바로 사용하고 write_file/read_file 쓰지 말 것."
+	)
+	async def extract_tables(browser_session) -> ActionResult:  # noqa: ANN001
+		try:
+			cdp = await browser_session.get_or_create_cdp_session()
+			res = await cdp.cdp_client.send.Runtime.evaluate(
+				params={"expression": _EXTRACT_JS, "returnByValue": True},
+				session_id=cdp.session_id,
+			)
+			raw = (res or {}).get("result", {}).get("value")
+			tables = json.loads(raw) if isinstance(raw, str) else (raw or [])
+		except Exception as e:  # noqa: BLE001
+			return ActionResult(
+				error=f"extract_tables 실패: {type(e).__name__}: {e}. 화면에서 직접 표를 읽으세요.",
+				long_term_memory="extract_tables 실패 — 수동 추출로 전환",
+			)
+		if not tables:
+			return ActionResult(
+				extracted_content="표를 찾지 못함. 조회 버튼을 눌러 데이터를 먼저 로드하거나 화면에서 직접 확인.",
+				long_term_memory="extract_tables: 표 0개",
+			)
+		summary = f"{len(tables)}개 표 추출: " + ", ".join(f"{t['title']}({len(t['rows'])}행)" for t in tables)
+		blob = json.dumps({"summary": summary, "tables": tables}, ensure_ascii=False)
+		return ActionResult(
+			extracted_content=blob[:6000],
+			long_term_memory=summary,
+			include_extracted_content_only_once=True,
+		)
+
+	_ = extract_tables
+	return tools
 
 # 결과 열 (표준)
 METRIC_COLS = ["성공 여부", "응답", "스텝 수", "걸린 시간", "스텝당 평균 시간"]
@@ -149,6 +230,7 @@ async def _run_one(system_cfg: dict, task_text: str, llm: ChatClaudeCode,
 	try:
 		agent = Agent(
 			task=full_task, llm=llm, browser=browser,
+			tools=_build_tools(),  # extract_tables 커스텀 액션
 			use_vision=True, use_judge=False, calculate_cost=False,
 			max_actions_per_step=2, directly_open_url=False,
 			sensitive_data=sensitive, llm_timeout=300, step_timeout=300,
